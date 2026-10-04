@@ -1,22 +1,24 @@
 import { useStore } from 'zustand'
 import type { StoreApi, UseBoundStore } from 'zustand'
 import Dexie, { type Table } from 'dexie'
-import type { CollectSite, Determination, Specimen, Storage } from '@/types'
+import type { CollectSite, Determination, Loan, Movement, Specimen, Storage } from '@/types'
 
 /** IndexedDB 数据结构版本号 */
-export const SCHEMA_VERSION = 2
+export const SCHEMA_VERSION = 3
 
 export interface MetaRow {
   key: string
   value: number
 }
 
-/** Dexie 封装：标本 / 采集地 / 保藏位置 / 鉴定记录 四张业务表 + 元数据表 */
+/** Dexie 封装：标本 / 采集地 / 保藏位置 / 鉴定记录 / 借出 / 出柜 六张业务表 + 元数据表 */
 class InsectLogDb extends Dexie {
   specimens!: Table<Specimen, string>
   sites!: Table<CollectSite, string>
   storages!: Table<Storage, string>
   determinations!: Table<Determination, string>
+  loans!: Table<Loan, string>
+  movements!: Table<Movement, string>
   meta!: Table<MetaRow, string>
 
   constructor() {
@@ -29,15 +31,40 @@ class InsectLogDb extends Dexie {
       meta: 'key'
     })
     // v2：新增「采集方式」字段，迁移时为历史标本补齐默认采集方式（扫网）
+    this.version(2).stores({
+      specimens: 'id, code, order, family, status, siteId, collectDate',
+      sites: 'id, code, name, habitat',
+      storages: 'id, specimenId, cabinet, drawer',
+      determinations: 'id, specimenId, determiner, date',
+      meta: 'key'
+    })
+    // v3：一份标本散放多个插位，只数按插位记（storages.count）；
+    // 新增借出流水 loans 与出柜流水 movements；旧插位照旧只占一个插位，只数补为该份总数
     this.version(SCHEMA_VERSION)
       .stores({
         specimens: 'id, code, order, family, status, siteId, collectDate',
         sites: 'id, code, name, habitat',
         storages: 'id, specimenId, cabinet, drawer',
         determinations: 'id, specimenId, determiner, date',
+        loans: 'id, specimenId, storageId, borrower, date',
+        movements: 'id, specimenId, storageId, date',
         meta: 'key'
       })
       .upgrade(async (tx) => {
+        const quantityOf = new Map<string, number>()
+        await tx
+          .table<Specimen, string>('specimens')
+          .each((specimen) => quantityOf.set(specimen.id, specimen.quantity))
+        await tx
+          .table<Storage, string>('storages')
+          .toCollection()
+          .modify((storage) => {
+            if (!Number.isFinite(storage.count) || storage.count < 1) {
+              // 旧数据：一份只占一个插位，该插位只数 = 登记总数
+              storage.count = quantityOf.get(storage.specimenId) ?? 1
+            }
+          })
+        // 补齐 v1→v2 时遗漏的默认采集方式（历史库兼容）
         await tx
           .table<Specimen, string>('specimens')
           .toCollection()
@@ -100,6 +127,7 @@ export async function seedDemoData(): Promise<void> {
   if (count > 0) return
 
   const today = new Date().toISOString().slice(0, 10)
+  const due = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString().slice(0, 10)
 
   await db.sites.bulkPut([
     {
@@ -211,7 +239,27 @@ export async function seedDemoData(): Promise<void> {
       status: '待鉴定',
       determiner: '',
       siteId: 'site_shr',
-      note: '酒精浸液保存，待制片'
+      note: '酒精浸液保存，一瓶多只，分装两个插位'
+    },
+    {
+      id: 'sp_005',
+      code: 'SHR-2026-0003',
+      order: '半翅目',
+      family: '划蝽科',
+      genus: '',
+      species: '',
+      tempName: '划蝽待定',
+      collectDate: today,
+      collector: '蓝澈',
+      sex: '未知',
+      stage: '成虫',
+      bodyLength: 8.2,
+      method: '徒手',
+      quantity: 8,
+      status: '初鉴',
+      determiner: '',
+      siteId: 'site_shr',
+      note: '浸液标本 8 只，分装两插位，其中 3 只外借贵州大学昆虫研究所'
     }
   ])
 
@@ -239,6 +287,7 @@ export async function seedDemoData(): Promise<void> {
   ])
 
   await db.storages.bulkPut([
+    // 旧规分装：一份一个插位，只数 = 登记总数
     {
       id: 'stg_001',
       specimenId: 'sp_001',
@@ -247,6 +296,7 @@ export async function seedDemoData(): Promise<void> {
       drawer: 1,
       box: 2,
       slot: 3,
+      count: 1,
       storedDate: today,
       handler: '覃羽'
     },
@@ -258,8 +308,73 @@ export async function seedDemoData(): Promise<void> {
       drawer: 1,
       box: 2,
       slot: 5,
+      count: 3,
       storedDate: today,
       handler: '覃羽'
+    },
+    // 浸液一份散放两个插位：7 + 5 = 12 只
+    {
+      id: 'stg_003',
+      specimenId: 'sp_004',
+      method: '浸液',
+      cabinet: 'C02',
+      drawer: 1,
+      box: 1,
+      slot: 1,
+      count: 7,
+      storedDate: today,
+      handler: '覃羽'
+    },
+    {
+      id: 'stg_004',
+      specimenId: 'sp_004',
+      method: '浸液',
+      cabinet: 'C02',
+      drawer: 1,
+      box: 1,
+      slot: 2,
+      count: 5,
+      storedDate: today,
+      handler: '覃羽'
+    },
+    // 划蝽 8 只分装 3 + 2（另 3 只外借中）
+    {
+      id: 'stg_005',
+      specimenId: 'sp_005',
+      method: '浸液',
+      cabinet: 'C02',
+      drawer: 1,
+      box: 2,
+      slot: 1,
+      count: 3,
+      storedDate: today,
+      handler: '覃羽'
+    },
+    {
+      id: 'stg_006',
+      specimenId: 'sp_005',
+      method: '浸液',
+      cabinet: 'C02',
+      drawer: 1,
+      box: 2,
+      slot: 2,
+      count: 2,
+      storedDate: today,
+      handler: '覃羽'
+    }
+  ])
+
+  await db.loans.bulkPut([
+    {
+      id: 'ln_001',
+      specimenId: 'sp_005',
+      storageId: 'stg_005',
+      borrower: '贵州大学昆虫研究所',
+      count: 3,
+      date: today,
+      dueDate: due,
+      handler: '覃羽',
+      note: '合作研究，限解剖 1 只'
     }
   ])
 }

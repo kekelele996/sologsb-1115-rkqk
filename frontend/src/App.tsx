@@ -4,13 +4,16 @@ import { specimenStore } from '@/stores/specimenStore'
 import { siteStore } from '@/stores/siteStore'
 import { storageStore } from '@/stores/storageStore'
 import { determinationStore } from '@/stores/determinationStore'
+import { loanStore } from '@/stores/loanStore'
+import { movementStore } from '@/stores/movementStore'
 
 const NAV = [
   { to: '/specimens', label: '标本清单', hint: '筛选 / 批量推进' },
-  { to: '/collect', label: '采集登记', hint: '同批次多份录入' },
+  { to: '/collect', label: '采集登记', hint: '登记个体总数' },
   { to: '/sites', label: '采集地管理', hint: '坐标校验 / 合并' },
   { to: '/determination', label: '鉴定工作流', hint: '待鉴定队列' },
-  { to: '/storage', label: '保藏柜位图', hint: '柜-屉-盒-位' }
+  { to: '/storage', label: '保藏分装', hint: '散放多插位 / 按只数' },
+  { to: '/loans', label: '借出归还', hint: '按只数借还 / 盘点' }
 ]
 
 /** 应用外壳：左侧导航 + 顶部状态条 + 路由出口 */
@@ -19,8 +22,12 @@ export default function AppLayout(): JSX.Element {
   const sites = usePersistentStore(siteStore, (state) => state.rows)
   const storages = usePersistentStore(storageStore, (state) => state.rows)
   const determinations = usePersistentStore(determinationStore, (state) => state.rows)
+  const loans = usePersistentStore(loanStore, (state) => state.rows)
+  const movements = usePersistentStore(movementStore, (state) => state.rows)
 
   const pending = specimens.filter((item) => item.status === '待鉴定').length
+  const storedIndividuals = storages.reduce((sum, item) => sum + item.count, 0)
+  const activeLoans = loans.filter((item) => !item.isReturn).length
 
   return (
     <div className="flex min-h-screen">
@@ -64,8 +71,20 @@ export default function AppLayout(): JSX.Element {
             <dd className="font-semibold">{sites.length}</dd>
           </div>
           <div className="flex justify-between">
-            <dt>已入柜</dt>
+            <dt>在柜只数</dt>
+            <dd className="font-semibold">{storedIndividuals}</dd>
+          </div>
+          <div className="flex justify-between">
+            <dt>占用插位</dt>
             <dd className="font-semibold">{storages.length}</dd>
+          </div>
+          <div className="flex justify-between">
+            <dt>借出中笔数</dt>
+            <dd className="font-semibold">{activeLoans}</dd>
+          </div>
+          <div className="flex justify-between">
+            <dt>出柜流水</dt>
+            <dd className="font-semibold">{movements.length}</dd>
           </div>
           <div className="flex justify-between">
             <dt>鉴定记录</dt>

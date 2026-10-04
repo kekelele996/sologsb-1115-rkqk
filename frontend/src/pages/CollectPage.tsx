@@ -97,6 +97,11 @@ export default function CollectPage(): JSX.Element {
       setError('每行都需要填写目')
       return
     }
+    const badQuantity = drafts.find((row) => !Number.isInteger(Number(row.quantity)) || Number(row.quantity) <= 0)
+    if (badQuantity) {
+      setError('个体数量（采集登记管的总只数）必须是大于 0 的整数，库房按这个总数核对分装')
+      return
+    }
     setError('')
     const rows: Specimen[] = drafts.map((draft) => ({
       id: uid('sp'),
@@ -196,7 +201,7 @@ export default function CollectPage(): JSX.Element {
                   <th className="border border-slate-200 px-2 py-1">虫态</th>
                   <th className="border border-slate-200 px-2 py-1">体长mm</th>
                   <th className="border border-slate-200 px-2 py-1">采集方式</th>
-                  <th className="border border-slate-200 px-2 py-1">数量</th>
+                  <th className="border border-slate-200 px-2 py-1">个体总数</th>
                   <th className="border border-slate-200 px-2 py-1">操作</th>
                 </tr>
               </thead>
@@ -262,7 +267,7 @@ export default function CollectPage(): JSX.Element {
                       </select>
                     </td>
                     <td className="border border-slate-200 px-1 py-1">
-                      <input className="field-input w-16" value={draft.quantity} onChange={(e) => patchDraft(draft.id, { quantity: e.target.value })} />
+                      <input type="number" min={1} step={1} className="field-input w-20" title="这份标本的个体总数，库房分装只数之和必须等于它" value={draft.quantity} onChange={(e) => patchDraft(draft.id, { quantity: e.target.value })} />
                     </td>
                     <td className="border border-slate-200 px-1 py-1">
                       <button
