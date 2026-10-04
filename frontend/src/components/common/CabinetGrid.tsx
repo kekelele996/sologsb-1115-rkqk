@@ -65,7 +65,7 @@ export default function CabinetGrid({
                       <button
                         key={slot}
                         type="button"
-                        title={storage ? `占用：${code}` : '空位'}
+                        title={storage ? `占用：${code}（${storage.count} 只）` : '空位'}
                         onClick={() =>
                           storage && onPickStorage ? onPickStorage(storage) : onDropSlot({ cabinet, drawer, box, slot })
                         }
@@ -80,8 +80,8 @@ export default function CabinetGrid({
                             : 'border-dashed border-slate-300 bg-slate-50 text-slate-400 hover:border-field-500 hover:text-field-600'
                         }`}
                       >
-                        <span className="block font-mono">{storage ? code : `S${String(slot).padStart(2, '0')}`}</span>
-                        <span className="block">{storage ? '占用' : '空位'}</span>
+                        <span className="block truncate px-0.5 font-mono">{storage ? code : `S${String(slot).padStart(2, '0')}`}</span>
+                        <span className="block">{storage ? `${storage.count} 只` : '空位'}</span>
                       </button>
                     )
                   })}

@@ -1,22 +1,23 @@
 import { useStore } from 'zustand'
 import type { StoreApi, UseBoundStore } from 'zustand'
 import Dexie, { type Table } from 'dexie'
-import type { CollectSite, Determination, Specimen, Storage } from '@/types'
+import type { CollectSite, Determination, Loan, Specimen, Storage } from '@/types'
 
 /** IndexedDB 数据结构版本号 */
-export const SCHEMA_VERSION = 2
+export const SCHEMA_VERSION = 3
 
 export interface MetaRow {
   key: string
   value: number
 }
 
-/** Dexie 封装：标本 / 采集地 / 保藏位置 / 鉴定记录 四张业务表 + 元数据表 */
+/** Dexie 封装：标本 / 采集地 / 保藏位置 / 鉴定记录 / 借出记录 + 元数据表 */
 class InsectLogDb extends Dexie {
   specimens!: Table<Specimen, string>
   sites!: Table<CollectSite, string>
   storages!: Table<Storage, string>
   determinations!: Table<Determination, string>
+  loans!: Table<Loan, string>
   meta!: Table<MetaRow, string>
 
   constructor() {
@@ -29,7 +30,7 @@ class InsectLogDb extends Dexie {
       meta: 'key'
     })
     // v2：新增「采集方式」字段，迁移时为历史标本补齐默认采集方式（扫网）
-    this.version(SCHEMA_VERSION)
+    this.version(2)
       .stores({
         specimens: 'id, code, order, family, status, siteId, collectDate',
         sites: 'id, code, name, habitat',
@@ -44,6 +45,30 @@ class InsectLogDb extends Dexie {
           .modify((specimen) => {
             if (!specimen.method) {
               specimen.method = '扫网'
+            }
+          })
+      })
+    // v3：保藏位置支持插位分装（一份标本散放多个插位，按插位记只数），新增借出记录表
+    this.version(SCHEMA_VERSION)
+      .stores({
+        specimens: 'id, code, order, family, status, siteId, collectDate',
+        sites: 'id, code, name, habitat',
+        storages: 'id, specimenId, cabinet, drawer, box, slot',
+        determinations: 'id, specimenId, determiner, date',
+        loans: 'id, specimenId, borrower, loanDate',
+        meta: 'key'
+      })
+      .upgrade(async (tx) => {
+        // 旧数据升级：保藏记录补齐只数（默认该标本个体总数），照旧只占一个插位
+        const specimens = await tx.table<Specimen, string>('specimens').toArray()
+        const qtyOf = new Map(specimens.map((item) => [item.id, item.quantity]))
+        await tx
+          .table<Storage, string>('storages')
+          .toCollection()
+          .modify((row) => {
+            if (row.count == null || !Number.isFinite(row.count)) {
+              const qty = qtyOf.get(row.specimenId)
+              row.count = qty && qty > 0 ? qty : 1
             }
           })
       })
@@ -247,6 +272,7 @@ export async function seedDemoData(): Promise<void> {
       drawer: 1,
       box: 2,
       slot: 3,
+      count: 1,
       storedDate: today,
       handler: '覃羽'
     },
@@ -258,6 +284,7 @@ export async function seedDemoData(): Promise<void> {
       drawer: 1,
       box: 2,
       slot: 5,
+      count: 3,
       storedDate: today,
       handler: '覃羽'
     }

@@ -64,8 +64,8 @@ export default function AppLayout(): JSX.Element {
             <dd className="font-semibold">{sites.length}</dd>
           </div>
           <div className="flex justify-between">
-            <dt>已入柜</dt>
-            <dd className="font-semibold">{storages.length}</dd>
+            <dt>在柜</dt>
+            <dd className="font-semibold">{storages.reduce((sum, row) => sum + (Number(row.count) || 0), 0)} 只</dd>
           </div>
           <div className="flex justify-between">
             <dt>鉴定记录</dt>

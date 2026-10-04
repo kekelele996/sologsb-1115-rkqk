@@ -75,10 +75,35 @@ export function storageSlotText(storage: Storage): string {
   return encodeSlot(storage.cabinet, storage.drawer, storage.box, storage.slot)
 }
 
-/** 检查柜位是否已被占用 */
-export function findSlotConflicts(storages: Storage[], target: Storage): Storage[] {
-  const key = storageSlotText(target)
-  return storages.filter((item) => item.id !== target.id && storageSlotText(item) === key)
+/** 某标本在柜中的总只数（各插位只数之和） */
+export function placedCountOf(storages: Storage[], specimenId: string): number {
+  return storages
+    .filter((item) => item.specimenId === specimenId)
+    .reduce((sum, item) => sum + (Number(item.count) || 0), 0)
+}
+
+/** 某标本尚未入柜的只数（采集登记的个体总数 - 已入柜只数） */
+export function remainingCountOf(specimen: Specimen, storages: Storage[]): number {
+  return Math.max(0, specimen.quantity - placedCountOf(storages, specimen.id))
+}
+
+/** 插位上的已有记录（任意标本） */
+export function slotOccupant(
+  storages: Storage[],
+  position: { cabinet: string; drawer: number; box: number; slot: number }
+): Storage | undefined {
+  const key = encodeSlot(position.cabinet, position.drawer, position.box, position.slot)
+  return storages.find((item) => storageSlotText(item) === key)
+}
+
+/** 同一标本在同一插位的已有记录（重试时更新而非重复占位） */
+export function findSlotRow(
+  storages: Storage[],
+  specimenId: string,
+  position: { cabinet: string; drawer: number; box: number; slot: number }
+): Storage | undefined {
+  const key = encodeSlot(position.cabinet, position.drawer, position.box, position.slot)
+  return storages.find((item) => item.specimenId === specimenId && storageSlotText(item) === key)
 }
 
 /** 标本摘要文本 */

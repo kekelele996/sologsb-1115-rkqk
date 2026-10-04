@@ -63,7 +63,7 @@ sologsb-1115/
 │   ├── public/favicon.svg
 │   └── src/
 │       ├── types/              # specimen.ts / site.ts / storage.ts / determination.ts / index.ts
-│       ├── stores/             # specimenStore / siteStore / storageStore / determinationStore（Zustand）
+│       ├── stores/             # specimenStore / siteStore / storageStore / loanStore / determinationStore（Zustand）
 │       ├── components/common/  # SpecimenCard / StatusTag / CabinetGrid / SitePicker
 │       ├── hooks/              # usePersistentStore / useSpecimenFilter
 │       ├── pages/              # SpecimensPage / SitesPage / CollectPage / DeterminationPage / StoragePage
@@ -77,11 +77,13 @@ sologsb-1115/
 | --- | --- | --- |
 | Specimen 标本 | 编号、目/科/属/种、暂定名、采集日期与人、性别虫态、体长、采集方式、数量、鉴定状态 | `specimens` |
 | CollectSite 采集地 | 代码、名称、行政区、经纬度海拔、生境类型、小生境、微气候、采集日期区间 | `sites` |
-| Storage 保藏位置 | 保藏方式、柜/抽屉/盒/插位序号、入柜日期、经手人 | `storages` |
+| Storage 保藏位置 | 保藏方式、柜/抽屉/盒/插位序号、**该插位只数**、入柜日期、经手人 | `storages` |
+| Loan 借出记录 | 借出只数、借出人、借出日期、归还日期 | `loans` |
 | Determination 鉴定记录 | 鉴定人、日期、结论（学名）、依据文献、置信度、是否需复核 | `determinations` |
 
 - 数据库名 `gbinsectlog`，`meta` 表保存 `schemaVersion`；
 - `version(2)` 升级迁移会为历史标本补齐默认采集方式（扫网）；
+- `version(3)` 升级迁移为旧保藏记录补齐只数（默认该标本个体总数），旧数据照旧只占一个插位；
 - 标本编号规则：`采集地代码-年份-流水号`（如 `QLB-2026-0007`），提交时自动分配并查重；
 - 数据仅存于浏览器本地，容器无状态、不挂载命名卷。
 
@@ -101,3 +103,6 @@ sologsb-1115/
 - 坐标 50 米内视为同一采集地，页面上给出合并提示，合并会把原采集地标本自动改挂；
 - 鉴定记录提交后自动把标本状态推进为「已鉴定」，勾选「需复核」则置为「待复核」；
 - 同一柜位（柜-屉-盒-位）只允许一份标本，冲突时列出已有标本编号。
+- **采集登记管个体总数，库房管插位分装**：一份标本可散放多个插位，每个插位只放一部分，只数按插位记；各插位只数之和不得超过该标本的个体总数，超出部分在分装时自动退回（只退这次没放下的）。
+- 同一标本在同一插位重试分装时更新原记录，不重复占位；插位被别的标本占用才判冲突，且只退这一份、不影响其他标本。
+- 出柜与借出均按只数计算：出柜可部分出柜，该插位只数减到 0 才清空插位；借出按只数登记并可归还。
